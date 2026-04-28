@@ -13,11 +13,30 @@ GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 # ================== کلائینٹس تیار ==================
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")   # اگر یہ چل رہا ہے تو یہی رہنے دیں
+
+# ================== ماڈل فیل بیک لسٹ — اگر پہلا کوٹہ ختم ہو تو دوسرا خودبخود چلے گا ==================
+MODEL_LIST = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-pro"]
+
+def call_generative_model(prompt):
+    """ماڈل کی فہرست میں سے پہلے قابلِ استعمال ماڈل کو آزما کر جواب لوٹائے۔"""
+    last_exception = None
+    for model_name in MODEL_LIST:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            last_exception = e
+            # اگر یہ ماڈل دستیاب نہیں یا کوٹہ ختم ہے تو اگلا ماڈل آزمائیں
+            if "429" in str(e) or "quota" in str(e).lower() or "not found" in str(e).lower() or "404" in str(e):
+                continue
+            else:
+                raise e
+    # اگر کوئی بھی ماڈل نہ چلے
+    raise Exception(f"کوئی بھی ماڈل دستیاب نہیں۔ آخری خرابی: {last_exception}")
 
 # ================== مددگار: AI کے جواب سے خالص JSON نکالنا ==================
 def safe_extract_json(text):
-    """AI کے جواب سے JSON نکالیں چاہے اس میں اضافی باتیں بھی ہوں۔"""
     if not text:
         raise ValueError("AI نے کوئی جواب نہیں دیا۔ شاید کوٹہ ختم ہو گیا۔")
     if "```json" in text:
@@ -52,8 +71,8 @@ JSON میں یہ فیلڈز ہونی چاہئیں:
 خیال کا عنوان: {title}
 تفصیل: {description}
 """
-    response = model.generate_content(prompt)
-    return safe_extract_json(response.text)
+    response_text = call_generative_model(prompt)
+    return safe_extract_json(response_text)
 
 # ================== فنکشن: میوٹیشن ==================
 def mutate_dna(original_dna, change):
@@ -64,8 +83,8 @@ def mutate_dna(original_dna, change):
 برائے مہربانی اس DNA میں یہ تبدیلی کریں: {change}
 صرف ترمیم شدہ JSON واپس کریں، بغیر کسی وضاحت کے۔
 """
-    response = model.generate_content(prompt)
-    return safe_extract_json(response.text)
+    response_text = call_generative_model(prompt)
+    return safe_extract_json(response_text)
 
 # ================== فنکشن: دو خیالات کا ادغام ==================
 def merge_dna(dna1, dna2):
@@ -76,8 +95,8 @@ def merge_dna(dna1, dna2):
 
 ان دونوں کو یکجا کر کے ایک نیا ہائبرڈ خیال بنائیں، اور اس کا DNA JSON میں واپس کریں۔
 """
-    response = model.generate_content(prompt)
-    return safe_extract_json(response.text)
+    response_text = call_generative_model(prompt)
+    return safe_extract_json(response_text)
 
 # ================== نیا فنکشن: AI سے تخلیقی مواد بنوانا ==================
 def generate_content(title, description, dna_json):
@@ -89,11 +108,7 @@ DNA: {json.dumps(dna_json, ensure_ascii=False)}
 
 صرف مواد لکھیں، کوئی اضافی وضاحت یا عنوان نہ دیں۔
 """
-    response = model.generate_content(prompt)
-    text = response.text.strip()
-    if not text:
-        raise ValueError("AI نے کوئی مواد نہیں لکھا۔ شاید کوٹہ ختم ہو گیا۔")
-    return text
+    return call_generative_model(prompt)
 
 # ================== Streamlit UI ==================
 st.set_page_config(page_title="آئیڈیا ایوولوشن انجن", layout="wide")
@@ -149,7 +164,6 @@ elif menu == "تمام خیالات":
                             st.rerun()
                     with col2:
                         if st.button(f"🗑️ حذف ##{idea['id']}", key=f"delete_{idea['id']}"):
-                            # پہلے بچوں کا parent_id NULL کریں
                             supabase.table("ideas").update({"parent_id": None}).eq("parent_id", idea['id']).execute()
                             supabase.table("mutations").delete().eq("original_idea_id", idea['id']).execute()
                             supabase.table("mutations").delete().eq("mutated_idea_id", idea['id']).execute()
@@ -157,13 +171,11 @@ elif menu == "تمام خیالات":
                             st.success("خیال حذف ہوگیا!")
                             st.rerun()
                     with col3:
-                        # نیا بٹن: AI سے مواد تخلیق کروائیں
                         if st.button(f"🧠 AI مواد ##{idea['id']}", key=f"gen_{idea['id']}"):
                             with st.spinner("AI لکھ رہا ہے..."):
                                 try:
                                     dna_obj = json.loads(idea['dna_json']) if isinstance(idea['dna_json'], str) else idea['dna_json']
                                     content = generate_content(idea['title'], idea['description'], dna_obj)
-                                    # جنریٹڈ مواد ڈیٹا بیس میں محفوظ کریں
                                     supabase.table("ideas").update({"generated_content": content}).eq("id", idea['id']).execute()
                                     st.success("مواد تیار ہوگیا! اسے دیکھنے کے لیے دوبارہ کھولیں۔")
                                     st.rerun()
