@@ -27,12 +27,10 @@ def call_generative_model(prompt):
             return response.text
         except Exception as e:
             last_exception = e
-            # اگر یہ ماڈل دستیاب نہیں یا کوٹہ ختم ہے تو اگلا ماڈل آزمائیں
             if "429" in str(e) or "quota" in str(e).lower() or "not found" in str(e).lower() or "404" in str(e):
                 continue
             else:
                 raise e
-    # اگر کوئی بھی ماڈل نہ چلے
     raise Exception(f"کوئی بھی ماڈل دستیاب نہیں۔ آخری خرابی: {last_exception}")
 
 # ================== مددگار: AI کے جواب سے خالص JSON نکالنا ==================
@@ -112,8 +110,20 @@ DNA: {json.dumps(dna_json, ensure_ascii=False)}
 
 # ================== Streamlit UI ==================
 st.set_page_config(page_title="آئیڈیا ایوولوشن انجن", layout="wide")
-st.title("🧬 آئیڈیا ایوولوشن انجن")
-st.markdown("### خیال زندہ ہے — اسے ارتقا دیں")
+
+# ✨ نیا ہیڈر — Layyah Jobs بٹن کے ساتھ
+st.markdown("""
+<div style="text-align:center; padding:20px; background:linear-gradient(135deg, #1a0a0a, #b30047); border-radius:20px; border:1px solid #ff9f43; margin-bottom:20px;">
+    <h1 style="color:#f0d9d9;">🧬 آئیڈیا ایوولوشن انجن</h1>
+    <p style="color:#ff9f43;">خیال زندہ ہے — اسے ارتقا دیں</p>
+    <a href="https://layyahjobs.streamlit.app/" target="_blank" 
+       style="display:inline-block; margin-top:12px; background:gold; color:#1a0a0a; 
+              padding:10px 30px; border-radius:50px; text-decoration:none; 
+              font-weight:bold; font-size:18px; box-shadow:0 0 10px gold;">
+       💼 Layyah Jobs 💼
+    </a>
+</div>
+""", unsafe_allow_html=True)
 
 menu = st.sidebar.radio("نیویگیشن", ["نیا خیال بوئیں", "تمام خیالات", "میوٹیشن / ادغام"])
 
