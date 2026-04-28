@@ -12,7 +12,7 @@ GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 # ================== کلائینٹس تیار ==================
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel("gemini-2.0-flash")
+model = genai.GenerativeModel("gemini-2.5-flash")
 # ================== فنکشن: ڈی این اے نکالنا ==================
 def extract_dna(title, description):
     prompt = f"""
