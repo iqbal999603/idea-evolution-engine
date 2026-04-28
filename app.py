@@ -20,21 +20,18 @@ def safe_extract_json(text):
     """AI کے جواب سے JSON نکالیں چاہے اس میں اضافی باتیں بھی ہوں۔"""
     if not text:
         raise ValueError("AI نے کوئی جواب نہیں دیا۔ شاید کوٹہ ختم ہو گیا۔")
-    # اگر ```json ... ``` میں لپٹا ہے
     if "```json" in text:
         parts = text.split("```json")
         if len(parts) > 1:
             after = parts[1].split("```")
             if after:
                 text = after[0].strip()
-    # اگر پھر بھی براہِ راست JSON نہ ہو تو { سے } تک تلاش کریں
     if not text.startswith("{"):
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
             text = match.group(0)
         else:
             raise ValueError(f"جواب میں JSON نہیں ملا۔ پہلے 200 حروف: {text[:200]}")
-    # اب پارس کرنے کی کوشش
     try:
         return json.loads(text)
     except json.JSONDecodeError:
@@ -82,6 +79,22 @@ def merge_dna(dna1, dna2):
     response = model.generate_content(prompt)
     return safe_extract_json(response.text)
 
+# ================== نیا فنکشن: AI سے تخلیقی مواد بنوانا ==================
+def generate_content(title, description, dna_json):
+    prompt = f"""
+نیچے دیئے گئے خیال کے عنوان، تفصیل اور DNA کی بنیاد پر ایک تخلیقی مواد (کہانی، مضمون، نظم، یا کاروباری تجویز) اردو میں تحریر کریں۔
+خیال کا عنوان: {title}
+تفصیل: {description}
+DNA: {json.dumps(dna_json, ensure_ascii=False)}
+
+صرف مواد لکھیں، کوئی اضافی وضاحت یا عنوان نہ دیں۔
+"""
+    response = model.generate_content(prompt)
+    text = response.text.strip()
+    if not text:
+        raise ValueError("AI نے کوئی مواد نہیں لکھا۔ شاید کوٹہ ختم ہو گیا۔")
+    return text
+
 # ================== Streamlit UI ==================
 st.set_page_config(page_title="آئیڈیا ایوولوشن انجن", layout="wide")
 st.title("🧬 آئیڈیا ایوولوشن انجن")
@@ -123,22 +136,39 @@ elif menu == "تمام خیالات":
                     if idea.get('dna_json'):
                         dna = json.loads(idea['dna_json']) if isinstance(idea['dna_json'], str) else idea['dna_json']
                         st.json(dna)
-                    col1, col2 = st.columns(2)
+
+                    # پہلے سے موجود AI مواد دکھائیں
+                    if idea.get('generated_content'):
+                        st.markdown("### 🤖 AI کا تخلیق کردہ مواد")
+                        st.write(idea['generated_content'])
+
+                    col1, col2, col3 = st.columns(3)
                     with col1:
                         if st.button(f"❤️ پسند ##{idea['id']}", key=f"like_{idea['id']}"):
                             supabase.table("ideas").update({"fitness_score": idea['fitness_score'] + 1}).eq("id", idea['id']).execute()
                             st.rerun()
                     with col2:
                         if st.button(f"🗑️ حذف ##{idea['id']}", key=f"delete_{idea['id']}"):
-                            # پہلے ان خیالات کا parent_id NULL کریں جو اس خیال کے بچے ہیں
+                            # پہلے بچوں کا parent_id NULL کریں
                             supabase.table("ideas").update({"parent_id": None}).eq("parent_id", idea['id']).execute()
-                            # mutations ٹیبل سے متعلقہ اندراجات مٹائیں
                             supabase.table("mutations").delete().eq("original_idea_id", idea['id']).execute()
                             supabase.table("mutations").delete().eq("mutated_idea_id", idea['id']).execute()
-                            # اب خیال خود حذف کریں
                             supabase.table("ideas").delete().eq("id", idea['id']).execute()
                             st.success("خیال حذف ہوگیا!")
                             st.rerun()
+                    with col3:
+                        # نیا بٹن: AI سے مواد تخلیق کروائیں
+                        if st.button(f"🧠 AI مواد ##{idea['id']}", key=f"gen_{idea['id']}"):
+                            with st.spinner("AI لکھ رہا ہے..."):
+                                try:
+                                    dna_obj = json.loads(idea['dna_json']) if isinstance(idea['dna_json'], str) else idea['dna_json']
+                                    content = generate_content(idea['title'], idea['description'], dna_obj)
+                                    # جنریٹڈ مواد ڈیٹا بیس میں محفوظ کریں
+                                    supabase.table("ideas").update({"generated_content": content}).eq("id", idea['id']).execute()
+                                    st.success("مواد تیار ہوگیا! اسے دیکھنے کے لیے دوبارہ کھولیں۔")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"مواد تخلیق کرتے وقت خرابی: {e}")
     except Exception as e:
         st.error(f"ڈیٹا لوڈ کرنے میں خرابی: {e}")
 
