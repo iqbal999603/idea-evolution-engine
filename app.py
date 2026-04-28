@@ -12,8 +12,9 @@ GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 # ================== کلائینٹس تیار ==================
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel("gemini-2.5-flash")
-# ================== فنکشن: ڈی این اے نکالنا ==================
+model = genai.GenerativeModel("gemini-2.5-flash")   # اگر یہ چل رہا ہے تو یہی رکھیں
+
+# ================== مضبوط فنکشن: ڈی این اے نکالنا ==================
 def extract_dna(title, description):
     prompt = f"""
 آپ کو ایک خیال دیا گیا ہے۔ اس خیال کا "ڈی این اے" نکال کر صرف JSON فارمیٹ میں واپس کریں۔
@@ -30,11 +31,16 @@ JSON میں یہ فیلڈز ہونی چاہئیں:
 """
     response = model.generate_content(prompt)
     text = response.text.strip()
+    if not text:
+        raise ValueError("AI نے کوئی جواب نہیں دیا۔ شاید کوٹہ ختم ہو گیا۔")
     if text.startswith("```json"):
         text = text[7:-3].strip()
-    return json.loads(text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        raise ValueError(f"AI نے درست JSON نہیں بھیجا۔ پہلے 200 حروف: {text[:200]}...")
 
-# ================== فنکشن: میوٹیشن ==================
+# ================== مضبوط فنکشن: میوٹیشن ==================
 def mutate_dna(original_dna, change):
     prompt = f"""
 ایک خیال کا DNA (JSON) درج ذیل ہے:
@@ -45,11 +51,16 @@ def mutate_dna(original_dna, change):
 """
     response = model.generate_content(prompt)
     text = response.text.strip()
+    if not text:
+        raise ValueError("AI نے کوئی جواب نہیں دیا۔ شاید کوٹہ ختم ہو گیا۔")
     if text.startswith("```json"):
         text = text[7:-3].strip()
-    return json.loads(text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        raise ValueError(f"AI نے درست JSON نہیں بھیجا۔ پہلے 200 حروف: {text[:200]}...")
 
-# ================== فنکشن: دو خیالات کا ادغام ==================
+# ================== مضبوط فنکشن: دو خیالات کا ادغام ==================
 def merge_dna(dna1, dna2):
     prompt = f"""
 دو خیالات کے DNA (JSON):
@@ -60,9 +71,14 @@ def merge_dna(dna1, dna2):
 """
     response = model.generate_content(prompt)
     text = response.text.strip()
+    if not text:
+        raise ValueError("AI نے کوئی جواب نہیں دیا۔ شاید کوٹہ ختم ہو گیا۔")
     if text.startswith("```json"):
         text = text[7:-3].strip()
-    return json.loads(text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        raise ValueError(f"AI نے درست JSON نہیں بھیجا۔ پہلے 200 حروف: {text[:200]}...")
 
 # ================== Streamlit UI ==================
 st.set_page_config(page_title="آئیڈیا ایوولوشن انجن", layout="wide")
@@ -105,9 +121,19 @@ elif menu == "تمام خیالات":
                     if idea.get('dna_json'):
                         dna = json.loads(idea['dna_json']) if isinstance(idea['dna_json'], str) else idea['dna_json']
                         st.json(dna)
-                    if st.button(f"پسند (فٹنس +1) ##{idea['id']}", key=f"like_{idea['id']}"):
-                        supabase.table("ideas").update({"fitness_score": idea['fitness_score'] + 1}).eq("id", idea['id']).execute()
-                        st.rerun()    # <--- یہاں تبدیلی کی ہے (experimental_rerun کی جگہ rerun)
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button(f"❤️ پسند ##{idea['id']}", key=f"like_{idea['id']}"):
+                            supabase.table("ideas").update({"fitness_score": idea['fitness_score'] + 1}).eq("id", idea['id']).execute()
+                            st.rerun()
+                    with col2:
+                        if st.button(f"🗑️ حذف ##{idea['id']}", key=f"delete_{idea['id']}"):
+                            # پہلے متعلقہ میوٹیشنز ڈیلیٹ کریں
+                            supabase.table("mutations").delete().eq("original_idea_id", idea['id']).execute()
+                            supabase.table("mutations").delete().eq("mutated_idea_id", idea['id']).execute()
+                            supabase.table("ideas").delete().eq("id", idea['id']).execute()
+                            st.success("خیال حذف ہوگیا!")
+                            st.rerun()
     except Exception as e:
         st.error(f"ڈیٹا لوڈ کرنے میں خرابی: {e}")
 
