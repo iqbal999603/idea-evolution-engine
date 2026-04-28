@@ -13,28 +13,28 @@ GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 # ================== کلائینٹس تیار ==================
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel("gemini-2.5-flash")   # مستحکم ماڈل، اگر ضرورت ہو تو بدل لیں
+model = genai.GenerativeModel("gemini-2.5-flash")   # اگر یہ چل رہا ہے تو یہی رہنے دیں
 
-# ================== مددگار فنکشن: AI کے جواب سے JSON نکالنا ==================
+# ================== مددگار: AI کے جواب سے خالص JSON نکالنا ==================
 def safe_extract_json(text):
-    """AI کے جواب سے خالص JSON نکالیں، چاہے جواب میں اضافی بات چیت ہی کیوں نہ ہو۔"""
+    """AI کے جواب سے JSON نکالیں چاہے اس میں اضافی باتیں بھی ہوں۔"""
     if not text:
-        raise ValueError("AI نے کوئی جواب نہیں دیا۔")
-    # اگر جواب ```json ... ``` میں لپٹا ہے تو اسے نکالیں
+        raise ValueError("AI نے کوئی جواب نہیں دیا۔ شاید کوٹہ ختم ہو گیا۔")
+    # اگر ```json ... ``` میں لپٹا ہے
     if "```json" in text:
         parts = text.split("```json")
         if len(parts) > 1:
             after = parts[1].split("```")
             if after:
                 text = after[0].strip()
-    # اگر تب بھی براہِ راست JSON نہ ہو تو پہلا { سے لے کر آخری } تک نکالیں
+    # اگر پھر بھی براہِ راست JSON نہ ہو تو { سے } تک تلاش کریں
     if not text.startswith("{"):
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
             text = match.group(0)
         else:
             raise ValueError(f"جواب میں JSON نہیں ملا۔ پہلے 200 حروف: {text[:200]}")
-    # اب صاف JSON کو پارس کریں
+    # اب پارس کرنے کی کوشش
     try:
         return json.loads(text)
     except json.JSONDecodeError:
@@ -130,9 +130,12 @@ elif menu == "تمام خیالات":
                             st.rerun()
                     with col2:
                         if st.button(f"🗑️ حذف ##{idea['id']}", key=f"delete_{idea['id']}"):
-                            # متعلقہ میوٹیشنز ڈیلیٹ کریں
+                            # پہلے ان خیالات کا parent_id NULL کریں جو اس خیال کے بچے ہیں
+                            supabase.table("ideas").update({"parent_id": None}).eq("parent_id", idea['id']).execute()
+                            # mutations ٹیبل سے متعلقہ اندراجات مٹائیں
                             supabase.table("mutations").delete().eq("original_idea_id", idea['id']).execute()
                             supabase.table("mutations").delete().eq("mutated_idea_id", idea['id']).execute()
+                            # اب خیال خود حذف کریں
                             supabase.table("ideas").delete().eq("id", idea['id']).execute()
                             st.success("خیال حذف ہوگیا!")
                             st.rerun()
