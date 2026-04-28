@@ -15,7 +15,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # ================== ماڈل فیل بیک لسٹ (صرف فعال ماڈلز) ==================
-MODEL_LIST = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.5-pro"]
+MODEL_LIST = ["gemini-2.5-flash"]
 
 def call_generative_model(prompt):
     """ماڈل کی فہرست میں سے پہلے قابلِ استعمال ماڈل کو آزما کر جواب لوٹائے۔"""
