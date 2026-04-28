@@ -13,7 +13,7 @@ GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 # ================== کلائینٹس تیار ==================
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel("gemini-2.5-flash")   # اگر یہ چل رہا ہے تو یہی رہنے دیں
+model = genai.GenerativeModel("gemini-1.5-flash")   # اگر یہ چل رہا ہے تو یہی رہنے دیں
 
 # ================== مددگار: AI کے جواب سے خالص JSON نکالنا ==================
 def safe_extract_json(text):
