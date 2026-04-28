@@ -4,10 +4,10 @@ import json
 import google.generativeai as genai
 from supabase import create_client, Client
 
-# ================== اپنی کیز (پہلے سے لگی ہوئی) ==================
-SUPABASE_URL = "https://arefrpqtugwkytfvnrzp.supabase.co"
-SUPABASE_KEY = "sb_publishable_Lz5qhdrNRAEeFJy6okrFWA_8bQJ-duQ"
-GOOGLE_API_KEY = "AIzaSyBX8wklxB-dkArtE_JAh7Q-GEZA9E7Gzok"
+# ================== اپنی کیز (Streamlit Secrets سے) ==================
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 
 # ================== کلائینٹس تیار ==================
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -108,7 +108,7 @@ elif menu == "تمام خیالات":
                         st.json(dna)
                     if st.button(f"پسند (فٹنس +1) ##{idea['id']}", key=f"like_{idea['id']}"):
                         supabase.table("ideas").update({"fitness_score": idea['fitness_score'] + 1}).eq("id", idea['id']).execute()
-                        st.experimental_rerun()
+                        st.rerun()    # <--- یہاں تبدیلی کی ہے (experimental_rerun کی جگہ rerun)
     except Exception as e:
         st.error(f"ڈیٹا لوڈ کرنے میں خرابی: {e}")
 
