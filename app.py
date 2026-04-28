@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
 import json
+import re
 import google.generativeai as genai
 from supabase import create_client, Client
 
@@ -12,9 +13,34 @@ GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 # ================== کلائینٹس تیار ==================
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel("gemini-2.5-flash")   # اگر یہ چل رہا ہے تو یہی رکھیں
+model = genai.GenerativeModel("gemini-2.5-flash")   # مستحکم ماڈل، اگر ضرورت ہو تو بدل لیں
 
-# ================== مضبوط فنکشن: ڈی این اے نکالنا ==================
+# ================== مددگار فنکشن: AI کے جواب سے JSON نکالنا ==================
+def safe_extract_json(text):
+    """AI کے جواب سے خالص JSON نکالیں، چاہے جواب میں اضافی بات چیت ہی کیوں نہ ہو۔"""
+    if not text:
+        raise ValueError("AI نے کوئی جواب نہیں دیا۔")
+    # اگر جواب ```json ... ``` میں لپٹا ہے تو اسے نکالیں
+    if "```json" in text:
+        parts = text.split("```json")
+        if len(parts) > 1:
+            after = parts[1].split("```")
+            if after:
+                text = after[0].strip()
+    # اگر تب بھی براہِ راست JSON نہ ہو تو پہلا { سے لے کر آخری } تک نکالیں
+    if not text.startswith("{"):
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            text = match.group(0)
+        else:
+            raise ValueError(f"جواب میں JSON نہیں ملا۔ پہلے 200 حروف: {text[:200]}")
+    # اب صاف JSON کو پارس کریں
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        raise ValueError(f"AI نے ناقص JSON بھیجا۔ پہلے 200 حروف: {text[:200]}")
+
+# ================== فنکشن: ڈی این اے نکالنا ==================
 def extract_dna(title, description):
     prompt = f"""
 آپ کو ایک خیال دیا گیا ہے۔ اس خیال کا "ڈی این اے" نکال کر صرف JSON فارمیٹ میں واپس کریں۔
@@ -30,17 +56,9 @@ JSON میں یہ فیلڈز ہونی چاہئیں:
 تفصیل: {description}
 """
     response = model.generate_content(prompt)
-    text = response.text.strip()
-    if not text:
-        raise ValueError("AI نے کوئی جواب نہیں دیا۔ شاید کوٹہ ختم ہو گیا۔")
-    if text.startswith("```json"):
-        text = text[7:-3].strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        raise ValueError(f"AI نے درست JSON نہیں بھیجا۔ پہلے 200 حروف: {text[:200]}...")
+    return safe_extract_json(response.text)
 
-# ================== مضبوط فنکشن: میوٹیشن ==================
+# ================== فنکشن: میوٹیشن ==================
 def mutate_dna(original_dna, change):
     prompt = f"""
 ایک خیال کا DNA (JSON) درج ذیل ہے:
@@ -50,17 +68,9 @@ def mutate_dna(original_dna, change):
 صرف ترمیم شدہ JSON واپس کریں، بغیر کسی وضاحت کے۔
 """
     response = model.generate_content(prompt)
-    text = response.text.strip()
-    if not text:
-        raise ValueError("AI نے کوئی جواب نہیں دیا۔ شاید کوٹہ ختم ہو گیا۔")
-    if text.startswith("```json"):
-        text = text[7:-3].strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        raise ValueError(f"AI نے درست JSON نہیں بھیجا۔ پہلے 200 حروف: {text[:200]}...")
+    return safe_extract_json(response.text)
 
-# ================== مضبوط فنکشن: دو خیالات کا ادغام ==================
+# ================== فنکشن: دو خیالات کا ادغام ==================
 def merge_dna(dna1, dna2):
     prompt = f"""
 دو خیالات کے DNA (JSON):
@@ -70,15 +80,7 @@ def merge_dna(dna1, dna2):
 ان دونوں کو یکجا کر کے ایک نیا ہائبرڈ خیال بنائیں، اور اس کا DNA JSON میں واپس کریں۔
 """
     response = model.generate_content(prompt)
-    text = response.text.strip()
-    if not text:
-        raise ValueError("AI نے کوئی جواب نہیں دیا۔ شاید کوٹہ ختم ہو گیا۔")
-    if text.startswith("```json"):
-        text = text[7:-3].strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        raise ValueError(f"AI نے درست JSON نہیں بھیجا۔ پہلے 200 حروف: {text[:200]}...")
+    return safe_extract_json(response.text)
 
 # ================== Streamlit UI ==================
 st.set_page_config(page_title="آئیڈیا ایوولوشن انجن", layout="wide")
@@ -128,7 +130,7 @@ elif menu == "تمام خیالات":
                             st.rerun()
                     with col2:
                         if st.button(f"🗑️ حذف ##{idea['id']}", key=f"delete_{idea['id']}"):
-                            # پہلے متعلقہ میوٹیشنز ڈیلیٹ کریں
+                            # متعلقہ میوٹیشنز ڈیلیٹ کریں
                             supabase.table("mutations").delete().eq("original_idea_id", idea['id']).execute()
                             supabase.table("mutations").delete().eq("mutated_idea_id", idea['id']).execute()
                             supabase.table("ideas").delete().eq("id", idea['id']).execute()
